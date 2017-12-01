@@ -15,7 +15,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/arnehormann/sqlinternals"
+	"github.com/hopehook/sqlinternals"
 )
 
 // keep in sync with github.com/go-sql-driver/mysql/const.go
