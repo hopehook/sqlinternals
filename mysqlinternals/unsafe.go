@@ -82,16 +82,9 @@ type mysqlField struct {
 	decimals  byte
 }
 
-type resultSet struct {
-	columns []mysqlField
-	columnNames []string
-	done    bool
-}
-
 type mysqlRows struct {
-	mc *mysqlConn
-	rs resultSet
-	finish func()
+	mc      *mysqlConn
+	columns []mysqlField
 }
 
 type emptyRows struct{}
@@ -171,10 +164,9 @@ func canConvert(from, to reflect.Type) bool {
 
 func initOffsets(rows driver.Rows) error {
 	const (
-		errWrapperMismatch   = mysqlError("unexpected structure of textRows or binaryRows")
-		errRowsMismatch      = mysqlError("unexpected structure of mysqlRows")
-		errResultsetMismatch = mysqlError("unexpected structure of resultSet")
-		errFieldMismatch     = mysqlError("unexpected structure of mysqlField")
+		errWrapperMismatch = mysqlError("unexpected structure of textRows or binaryRows")
+		errRowsMismatch    = mysqlError("unexpected structure of mysqlRows")
+		errFieldMismatch   = mysqlError("unexpected structure of mysqlField")
 	)
 	// make sure mysqlRows is the right type (full certainty is impossible).
 	if rows == nil {
@@ -193,8 +185,11 @@ func initOffsets(rows driver.Rows) error {
 	default:
 		return errUnexpectedType
 	}
-	embedded, ok := elemType.FieldByName("mysqlRows")
-	if !ok {
+	if elemType.NumField() != 1 {
+		return errWrapperMismatch
+	}
+	embedded := elemType.Field(0)
+	if embedded.Name != "mysqlRows" {
 		return errWrapperMismatch
 	}
 	elemType = embedded.Type
@@ -202,18 +197,9 @@ func initOffsets(rows driver.Rows) error {
 	if !canConvert(elemType, reflect.TypeOf(mysqlRows{})) {
 		return errRowsMismatch
 	}
-	resultSetField, ok := elemType.FieldByName("rs")
-	if !ok {
-		return errRowsMismatch
-	}
-	elemType = resultSetField.Type
-	// compare resultSet
-	if !canConvert(elemType, reflect.TypeOf(resultSet{})) {
-		return errRowsMismatch
-	}
 	colsField, ok := elemType.FieldByName("columns")
 	if !ok {
-		return errResultsetMismatch
+		return errRowsMismatch
 	}
 	// compare mysqlField
 	if !canConvert(colsField.Type.Elem(), reflect.TypeOf(mysqlField{})) {
@@ -288,7 +274,7 @@ func Columns(rowOrRows interface{}) ([]Column, error) {
 	if rowtypeEmpty == reflect.TypeOf(dRows).Name() {
 		return nil, nil
 	}
-	cols := (*mysqlRows)((unsafe.Pointer)(reflect.ValueOf(dRows).Pointer())).rs.columns
+	cols := (*mysqlRows)((unsafe.Pointer)(reflect.ValueOf(dRows).Pointer())).columns
 	columns := make([]Column, len(cols))
 	for i, c := range cols {
 		columns[i] = c
